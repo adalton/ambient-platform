@@ -131,7 +131,7 @@ Backend API - Build Information
 Version:     v1.2.3-dirty
 Commit:      abc123def456789...
 Branch:      feature/build-metadata
-Repository:  https://github.com/ambient-code/vteam.git
+Repository:  https://github.com/ambient-code/platform.git
 Built:       2025-12-15T10:30:45Z
 Built by:    gkrumbac@MacBook-Pro.local
 ==============================================

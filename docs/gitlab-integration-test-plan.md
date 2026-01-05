@@ -1,13 +1,13 @@
 # GitLab Integration Test Plan
 
-**Feature**: GitLab Support for vTeam
+**Feature**: GitLab Support for Ambient Code Platform
 **Branch**: `feature/gitlab-support`
 **Date**: 2025-11-05
 **Status**: Ready for Testing
 
 ## Overview
 
-This test plan validates the GitLab integration implemented in vTeam, covering User Story 1 (Configure GitLab Repository) and User Story 3 (Execute AgenticSession with GitLab).
+This test plan validates the GitLab integration implemented in Ambient Code Platform, covering User Story 1 (Configure GitLab Repository) and User Story 3 (Execute AgenticSession with GitLab).
 
 ## Prerequisites
 
@@ -29,8 +29,8 @@ This test plan validates the GitLab integration implemented in vTeam, covering U
      - `write_repository` (push to repositories)
    - Create at: https://gitlab.com/-/profile/personal_access_tokens
 
-4. **vTeam Environment**
-   - vTeam backend running with Kubernetes access
+4. **Ambient Code Platform Environment**
+   - Ambient Code Platform backend running with Kubernetes access
    - Backend namespace: `vteam-backend`
    - kubectl access to backend namespace
    - Valid user authentication token
@@ -40,7 +40,7 @@ This test plan validates the GitLab integration implemented in vTeam, covering U
 **GitLab.com Test Repository**:
 ```
 URL: https://gitlab.com/<your-username>/<test-repo>.git
-Example: https://gitlab.com/testuser/vteam-test-repo.git
+Example: https://gitlab.com/testuser/acp-test-repo.git
 ```
 
 **Self-Hosted Test Repository** (if applicable):
@@ -55,7 +55,7 @@ Example: https://gitlab.example.com/dev/integration-test.git
 
 ### TC-001: GitLab Connection - Connect with Valid Token (GitLab.com)
 
-**User Story**: US1 - Configure vTeam Project with GitLab Repository
+**User Story**: US1 - Configure Ambient Code Platform Project with GitLab Repository
 **Priority**: P1 (Critical)
 
 **Setup**:
@@ -277,14 +277,14 @@ kubectl get configmap gitlab-connections -n vteam-backend -o json | \
 
 **Setup**:
 1. Complete TC-001 (GitLab connected)
-2. Create or use existing vTeam project
+2. Create or use existing Ambient Code Platform project
 
 **Steps**:
 1. Update ProjectSettings CR with GitLab repository:
    ```yaml
    spec:
      repositories:
-       - url: "https://gitlab.com/testuser/vteam-test-repo.git"
+       - url: "https://gitlab.com/testuser/acp-test-repo.git"
          branch: "main"
    ```
 
@@ -642,7 +642,7 @@ kubectl logs <session-pod> -n <project> | grep -i "token" | grep -v "***"  # Sho
 ## Manual Testing Checklist
 
 ### Setup Phase
-- [ ] Deploy vTeam backend with GitLab support
+- [ ] Deploy Ambient Code Platform backend with GitLab support
 - [ ] Verify backend namespace exists (`vteam-backend`)
 - [ ] Create GitLab.com test account and repository
 - [ ] Generate GitLab PAT with required scopes

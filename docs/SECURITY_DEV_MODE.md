@@ -109,7 +109,7 @@ func isLocalDevEnvironment() bool {
     // ALLOW-LIST approach instead of DENY-LIST
     allowedNamespaces := []string{
         "ambient-code",    // Default minikube namespace
-        "vteam-dev",       // Legacy local dev namespace
+        "vteam-dev",         // Local dev namespace
     }
     
     namespace := os.Getenv("NAMESPACE")
