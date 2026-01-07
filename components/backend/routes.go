@@ -35,6 +35,7 @@ func registerRoutes(r *gin.Engine) {
 
 		api.POST("/projects/:projectName/agentic-sessions/:sessionName/github/token", handlers.MintSessionGitHubToken)
 
+
 		projectGroup := api.Group("/projects/:projectName", handlers.ValidateProjectContext())
 		{
 			projectGroup.GET("/access", handlers.AccessCheck)
@@ -56,6 +57,8 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.POST("/agentic-sessions/:sessionName/clone", handlers.CloneSession)
 			projectGroup.POST("/agentic-sessions/:sessionName/start", handlers.StartSession)
 			projectGroup.POST("/agentic-sessions/:sessionName/stop", handlers.StopSession)
+			projectGroup.POST("/agentic-sessions/:sessionName/workspace/enable", handlers.EnableWorkspaceAccess)
+			projectGroup.POST("/agentic-sessions/:sessionName/workspace/touch", handlers.TouchWorkspaceAccess)
 			projectGroup.GET("/agentic-sessions/:sessionName/workspace", handlers.ListSessionWorkspace)
 			projectGroup.GET("/agentic-sessions/:sessionName/workspace/*path", handlers.GetSessionWorkspaceFile)
 			projectGroup.PUT("/agentic-sessions/:sessionName/workspace/*path", handlers.PutSessionWorkspaceFile)
@@ -90,9 +93,6 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.GET("/agentic-sessions/:sessionName/agui/history", websocket.HandleAGUIHistory)
 			projectGroup.GET("/agentic-sessions/:sessionName/agui/runs", websocket.HandleAGUIRuns)
 
-			// MCP status endpoint
-			projectGroup.GET("/agentic-sessions/:sessionName/mcp/status", websocket.HandleMCPStatus)
-
 			// Session export
 			projectGroup.GET("/agentic-sessions/:sessionName/export", websocket.HandleExportSession)
 
@@ -120,11 +120,6 @@ func registerRoutes(r *gin.Engine) {
 		api.GET("/auth/github/status", handlers.GetGitHubStatusGlobal)
 		api.POST("/auth/github/disconnect", handlers.DisconnectGitHubGlobal)
 		api.GET("/auth/github/user/callback", handlers.HandleGitHubUserOAuthCallback)
-
-		// Cluster-level Google OAuth (similar to GitHub App pattern)
-		api.POST("/auth/google/connect", handlers.GetGoogleOAuthURLGlobal)
-		api.GET("/auth/google/status", handlers.GetGoogleOAuthStatusGlobal)
-		api.POST("/auth/google/disconnect", handlers.DisconnectGoogleOAuthGlobal)
 
 		// Cluster info endpoint (public, no auth required)
 		api.GET("/cluster-info", handlers.GetClusterInfo)

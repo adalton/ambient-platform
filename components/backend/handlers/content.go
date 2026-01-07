@@ -14,6 +14,7 @@ import (
 
 	"ambient-code-backend/git"
 	"ambient-code-backend/pathutil"
+	"ambient-code-backend/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -270,7 +271,7 @@ func ContentGitConfigureRemote(c *gin.Context) {
 	// This is best-effort - don't fail if fetch fails
 	branch := body.Branch
 	if branch == "" {
-		branch = "main"
+		branch = types.DefaultBranch
 	}
 	cmd := exec.CommandContext(c.Request.Context(), "git", "fetch", "origin", branch)
 	cmd.Dir = abs
@@ -511,12 +512,17 @@ func ContentWorkflowMetadata(c *gin.Context) {
 					displayName = commandName
 				}
 
-				// Use full command name as slash command (e.g., /speckit.rfe.start)
+				// Extract short command (last segment after final dot)
+				shortCommand := commandName
+				if lastDot := strings.LastIndex(commandName, "."); lastDot != -1 {
+					shortCommand = commandName[lastDot+1:]
+				}
+
 				commands = append(commands, map[string]interface{}{
 					"id":           commandName,
 					"name":         displayName,
 					"description":  metadata["description"],
-					"slashCommand": "/" + commandName,
+					"slashCommand": "/" + shortCommand,
 					"icon":         metadata["icon"],
 				})
 			}
@@ -643,9 +649,9 @@ func parseAmbientConfig(workflowDir string) *AmbientConfig {
 
 // findActiveWorkflowDir finds the active workflow directory for a session
 func findActiveWorkflowDir(sessionName string) string {
-	// Workflows are stored at {StateBaseDir}/workflows/{workflow-name}
-	// The runner clones workflows to /workspace/workflows/ at runtime
-	workflowsBase := filepath.Join(StateBaseDir, "workflows")
+	// Workflows are stored at {StateBaseDir}/sessions/{session-name}/workspace/workflows/{workflow-name}
+	// The runner creates this nested structure
+	workflowsBase := filepath.Join(StateBaseDir, "sessions", sessionName, "workspace", "workflows")
 
 	entries, err := os.ReadDir(workflowsBase)
 	if err != nil {
@@ -679,7 +685,7 @@ func ContentGitMergeStatus(c *gin.Context) {
 	}
 
 	if branch == "" {
-		branch = "main"
+		branch = types.DefaultBranch
 	}
 
 	// Check if git repo exists
@@ -729,7 +735,7 @@ func ContentGitPull(c *gin.Context) {
 	}
 
 	if body.Branch == "" {
-		body.Branch = "main"
+		body.Branch = types.DefaultBranch
 	}
 
 	if err := GitPullRepo(c.Request.Context(), abs, body.Branch); err != nil {
@@ -764,7 +770,7 @@ func ContentGitPushToBranch(c *gin.Context) {
 	}
 
 	if body.Branch == "" {
-		body.Branch = "main"
+		body.Branch = types.DefaultBranch
 	}
 
 	if body.Message == "" {

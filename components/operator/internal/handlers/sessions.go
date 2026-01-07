@@ -1416,51 +1416,63 @@ func reconcileSpecReposWithPatch(sessionNamespace, sessionName string, spec map[
 		return nil
 	}
 
-	// Parse spec repos
-	specRepos := make([]map[string]string, 0, len(repoSlice))
+	// Parse spec repos (V2 format with input/output/autoPush)
+	specRepos := make([]map[string]interface{}, 0, len(repoSlice))
 	for _, entry := range repoSlice {
 		if repoMap, ok := entry.(map[string]interface{}); ok {
-			url, _ := repoMap["url"].(string)
-			if strings.TrimSpace(url) == "" {
+			// V2 format requires input field
+			inputMap, hasInput := repoMap["input"].(map[string]interface{})
+			if !hasInput {
+				log.Printf("Warning: Skipping repo without input field in session %s/%s", sessionNamespace, sessionName)
 				continue
 			}
-			branch := "main"
-			if b, ok := repoMap["branch"].(string); ok && strings.TrimSpace(b) != "" {
-				branch = b
+
+			inputURL, _ := inputMap["url"].(string)
+			if strings.TrimSpace(inputURL) == "" {
+				log.Printf("Warning: Skipping repo with empty input.url in session %s/%s", sessionNamespace, sessionName)
+				continue
 			}
-			specRepos = append(specRepos, map[string]string{
-				"url":    url,
-				"branch": branch,
-			})
+
+			// Store the full V2 repo structure for reconciliation
+			specRepos = append(specRepos, repoMap)
 		}
 	}
 
-	// Get current reconciled repos from status
+	// Get current reconciled repos from status (V2 format)
 	status, _, _ := unstructured.NestedMap(session.Object, "status")
 	reconciledReposRaw, _, _ := unstructured.NestedSlice(status, "reconciledRepos")
-	reconciledRepos := make([]map[string]string, 0, len(reconciledReposRaw))
+	reconciledRepos := make([]map[string]interface{}, 0, len(reconciledReposRaw))
 	for _, entry := range reconciledReposRaw {
 		if repoMap, ok := entry.(map[string]interface{}); ok {
-			url, _ := repoMap["url"].(string)
-			branch, _ := repoMap["branch"].(string)
-			if url != "" {
-				reconciledRepos = append(reconciledRepos, map[string]string{
-					"url":    url,
-					"branch": branch,
-				})
+			// Validate V2 format
+			if inputMap, hasInput := repoMap["input"].(map[string]interface{}); hasInput {
+				if url, _ := inputMap["url"].(string); url != "" {
+					reconciledRepos = append(reconciledRepos, repoMap)
+				}
 			}
 		}
 	}
 
-	// Detect drift: repos added or removed
-	toAdd := []map[string]string{}
-	toRemove := []map[string]string{}
+	// Detect drift: repos added or removed (compare by input.url in V2 format)
+	toAdd := []map[string]interface{}{}
+	toRemove := []map[string]interface{}{}
+
+	// Helper to extract input.url from V2 repo
+	getInputURL := func(repoMap map[string]interface{}) string {
+		if inputMap, ok := repoMap["input"].(map[string]interface{}); ok {
+			if url, ok := inputMap["url"].(string); ok {
+				return url
+			}
+		}
+		return ""
+	}
 
 	// Find repos in spec but not in reconciled (need to add)
 	for _, specRepo := range specRepos {
+		specURL := getInputURL(specRepo)
 		found := false
 		for _, reconciledRepo := range reconciledRepos {
-			if specRepo["url"] == reconciledRepo["url"] {
+			if specURL == getInputURL(reconciledRepo) {
 				found = true
 				break
 			}
@@ -1472,9 +1484,10 @@ func reconcileSpecReposWithPatch(sessionNamespace, sessionName string, spec map[
 
 	// Find repos in reconciled but not in spec (need to remove)
 	for _, reconciledRepo := range reconciledRepos {
+		reconciledURL := getInputURL(reconciledRepo)
 		found := false
 		for _, specRepo := range specRepos {
-			if reconciledRepo["url"] == specRepo["url"] {
+			if reconciledURL == getInputURL(specRepo) {
 				found = true
 				break
 			}
@@ -1494,12 +1507,25 @@ func reconcileSpecReposWithPatch(sessionNamespace, sessionName string, spec map[
 
 	// Add repos
 	for _, repo := range toAdd {
-		repoName := deriveRepoNameFromURL(repo["url"])
+		// Extract input URL for repo name derivation
+		inputURL := ""
+		if inputMap, ok := repo["input"].(map[string]interface{}); ok {
+			inputURL, _ = inputMap["url"].(string)
+		}
+		repoName := deriveRepoNameFromURL(inputURL)
 
+		// Send full V2 format to runner
 		payload := map[string]interface{}{
-			"url":    repo["url"],
-			"branch": repo["branch"],
+			"input":  repo["input"],
 			"name":   repoName,
+		}
+		// Include output if present
+		if output, hasOutput := repo["output"]; hasOutput {
+			payload["output"] = output
+		}
+		// Include autoPush if present
+		if autoPush, hasAutoPush := repo["autoPush"]; hasAutoPush {
+			payload["autoPush"] = autoPush
 		}
 		payloadBytes, _ := json.Marshal(payload)
 
@@ -1525,7 +1551,12 @@ func reconcileSpecReposWithPatch(sessionNamespace, sessionName string, spec map[
 
 	// Remove repos
 	for _, repo := range toRemove {
-		repoName := deriveRepoNameFromURL(repo["url"])
+		// Extract input URL for repo name derivation
+		inputURL := ""
+		if inputMap, ok := repo["input"].(map[string]interface{}); ok {
+			inputURL, _ = inputMap["url"].(string)
+		}
+		repoName := deriveRepoNameFromURL(inputURL)
 
 		payload := map[string]interface{}{
 			"name": repoName,

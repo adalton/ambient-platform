@@ -1,5 +1,10 @@
 package types
 
+import (
+	"fmt"
+	"strings"
+)
+
 // AgenticSession represents the structure of our custom resource
 type AgenticSession struct {
 	APIVersion string                 `json:"apiVersion"`
@@ -26,8 +31,15 @@ type AgenticSessionSpec struct {
 	ActiveWorkflow *WorkflowSelection `json:"activeWorkflow,omitempty"`
 }
 
-// SimpleRepo represents a simplified repository configuration
+// SimpleRepo represents a repository configuration with input/output/autoPush structure
 type SimpleRepo struct {
+	Input    *RepoLocation `json:"input,omitempty"`
+	Output   *RepoLocation `json:"output,omitempty"`
+	AutoPush *bool         `json:"autoPush,omitempty"`
+}
+
+// RepoLocation represents a git repository location (input source or output target)
+type RepoLocation struct {
 	URL    string  `json:"url"`
 	Branch *string `json:"branch,omitempty"`
 }
@@ -112,4 +124,70 @@ type Condition struct {
 	Message            string `json:"message,omitempty"`
 	LastTransitionTime string `json:"lastTransitionTime,omitempty"`
 	ObservedGeneration int64  `json:"observedGeneration,omitempty"`
+}
+
+// ValidateRepo validates the repository configuration.
+// NOTE: Validation logic must stay synchronized with ParseRepoMap() in handlers/helpers.go
+func (r *SimpleRepo) ValidateRepo() error {
+	if r.Input == nil {
+		return fmt.Errorf("input is required")
+	}
+
+	if strings.TrimSpace(r.Input.URL) == "" {
+		return fmt.Errorf("input.url is required")
+	}
+
+	// Validate that output differs from input (if output is specified)
+	if r.Output != nil {
+		inputURL := strings.TrimSpace(r.Input.URL)
+		outputURL := strings.TrimSpace(r.Output.URL)
+		inputBranch := ""
+		outputBranch := ""
+		if r.Input.Branch != nil {
+			inputBranch = strings.TrimSpace(*r.Input.Branch)
+		}
+		if r.Output.Branch != nil {
+			outputBranch = strings.TrimSpace(*r.Output.Branch)
+		}
+
+		// Output must differ from input in either URL or branch
+		if inputURL == outputURL && inputBranch == outputBranch {
+			return fmt.Errorf("output repository must differ from input (different URL or branch required)")
+		}
+	}
+
+	return nil
+}
+
+// ToMapForCR converts SimpleRepo to a map suitable for CustomResource spec.repos[]
+func (r *SimpleRepo) ToMapForCR() map[string]interface{} {
+	m := make(map[string]interface{})
+
+	if r.Input != nil {
+		inputMap := map[string]interface{}{
+			"url": r.Input.URL,
+		}
+		if r.Input.Branch != nil {
+			inputMap["branch"] = *r.Input.Branch
+		}
+		m["input"] = inputMap
+
+		// Add output if defined
+		if r.Output != nil {
+			outputMap := map[string]interface{}{
+				"url": r.Output.URL,
+			}
+			if r.Output.Branch != nil {
+				outputMap["branch"] = *r.Output.Branch
+			}
+			m["output"] = outputMap
+		}
+
+		// Add autoPush flag
+		if r.AutoPush != nil {
+			m["autoPush"] = *r.AutoPush
+		}
+	}
+
+	return m
 }
