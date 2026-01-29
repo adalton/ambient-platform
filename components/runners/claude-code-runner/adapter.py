@@ -324,6 +324,9 @@ class ClaudeCodeAdapter:
             f"_run_claude_agent_sdk called with prompt length={len(prompt)}, will create fresh client"
         )
         try:
+            # Refresh Google credentials before each run (picks up newly authenticated creds)
+            await self.refresh_google_credentials()
+
             # Check for authentication method
             logger.info("Checking authentication configuration...")
             api_key = self.context.get_env("ANTHROPIC_API_KEY", "")
@@ -450,6 +453,52 @@ class ClaudeCodeAdapter:
 
             # Load MCP server configuration (webfetch is included in static .mcp.json)
             mcp_servers = self._load_mcp_config(cwd_path) or {}
+
+            # Pre-flight check: Validate MCP server authentication status
+            # Import here to avoid circular dependency
+            from main import _check_mcp_authentication
+
+            mcp_auth_warnings = []
+            if mcp_servers:
+                for server_name in mcp_servers.keys():
+                    is_auth, msg = _check_mcp_authentication(server_name)
+
+                    if is_auth is False:
+                        # Authentication definitely failed
+                        mcp_auth_warnings.append(f"⚠️  {server_name}: {msg}")
+                    elif is_auth is None:
+                        # Authentication needs refresh or uncertain
+                        mcp_auth_warnings.append(f"ℹ️  {server_name}: {msg}")
+
+            if mcp_auth_warnings:
+                warning_msg = "**MCP Server Authentication Issues:**\n\n" + "\n".join(mcp_auth_warnings)
+                warning_msg += "\n\nThese servers may not work correctly until re-authenticated."
+                logger.warning(warning_msg)
+
+                # Yield a user-visible message about auth issues
+                # Generate IDs for this warning message
+                warning_message_id = str(uuid.uuid4())
+
+                yield TextMessageStartEvent(
+                    type=EventType.TEXT_MESSAGE_START,
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    message_id=warning_message_id,
+                    role="assistant"
+                )
+                yield TextMessageContentEvent(
+                    type=EventType.TEXT_MESSAGE_CONTENT,
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    message_id=warning_message_id,
+                    content=warning_msg
+                )
+                yield TextMessageEndEvent(
+                    type=EventType.TEXT_MESSAGE_END,
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    message_id=warning_message_id
+                )
 
             # Create custom session control tools
             # Capture self reference for the restart tool closure
@@ -1584,7 +1633,11 @@ class ClaudeCodeAdapter:
         This method checks if credentials.json exists and has content.
         Call refresh_google_credentials() periodically to pick up new credentials after OAuth.
         """
-        await self._try_copy_google_credentials()
+        success = await self._try_copy_google_credentials()
+
+        if success:
+            # Extract and set USER_GOOGLE_EMAIL from credentials
+            await self._set_google_user_email()
 
     async def _try_copy_google_credentials(self) -> bool:
         """Attempt to copy Google credentials from mounted secret.
@@ -1642,6 +1695,8 @@ class ClaudeCodeAdapter:
         changes (typically within ~60 seconds), so this will pick up new credentials
         without requiring a pod restart.
 
+        Also updates USER_GOOGLE_EMAIL environment variable if credentials changed.
+
         Returns:
             True if new credentials were found and copied, False otherwise.
         """
@@ -1661,7 +1716,12 @@ class ClaudeCodeAdapter:
                         logging.info(
                             "Detected updated Google OAuth credentials, refreshing..."
                         )
-                        return await self._try_copy_google_credentials()
+                        success = await self._try_copy_google_credentials()
+                        if success:
+                            # Update USER_GOOGLE_EMAIL when credentials refresh
+                            await self._set_google_user_email()
+                            logging.info("Google credentials refreshed successfully")
+                        return success
                 except OSError:
                     pass
             return False
@@ -1671,5 +1731,46 @@ class ClaudeCodeAdapter:
             logging.info(
                 "✓ Google OAuth credentials now available (user completed authentication)"
             )
+            # Set USER_GOOGLE_EMAIL for new credentials
+            await self._set_google_user_email()
             return True
         return False
+
+    async def _set_google_user_email(self):
+        """Extract user email from credentials.json and set as environment variable.
+
+        This ensures USER_GOOGLE_EMAIL is set correctly instead of using the placeholder
+        'user@example.com' from .mcp.json defaults.
+        """
+        import json as _json
+
+        workspace_path = Path("/workspace/.google_workspace_mcp/credentials/credentials.json")
+
+        if not workspace_path.exists():
+            logging.debug("No Google credentials to extract email from")
+            return
+
+        try:
+            with open(workspace_path, 'r') as f:
+                creds = _json.load(f)
+
+            # Validate credentials structure
+            if not isinstance(creds, dict) or not creds:
+                logging.warning("Google credentials file is empty or invalid format")
+                return
+
+            # Get first user email (single-user mode)
+            user_emails = list(creds.keys())
+            if user_emails:
+                user_email = user_emails[0]
+                # Skip placeholder email
+                if user_email != "user@example.com":
+                    os.environ["USER_GOOGLE_EMAIL"] = user_email
+                    logging.info(f"Set USER_GOOGLE_EMAIL={user_email}")
+                else:
+                    logging.debug("Skipping placeholder email user@example.com")
+            else:
+                logging.warning("No user email found in Google credentials")
+
+        except (_json.JSONDecodeError, OSError, KeyError) as e:
+            logging.error(f"Failed to extract user email from credentials: {e}")

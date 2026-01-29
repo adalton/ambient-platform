@@ -17,9 +17,15 @@ Once connected, Claude can:
 
 1. Open or create an agentic session
 2. In the left sidebar, expand **"MCP Integrations"**
-3. Click **"Connect"** on the Google Drive card
-4. Authorize in the popup window
-5. Close the popup when you see "Authorization Successful"
+3. Check the status badge next to Google Workspace:
+   - ✅ **Connected**: Ready to use (valid authentication)
+   - 🔄 **Needs Refresh**: Token expired, will auto-refresh on next use (no action needed)
+   - ⚠️ **Not Connected**: Need to authorize
+4. If not connected, click **"Connect"** on the Google Drive card
+5. Authorize in the popup window
+6. Close the popup when you see "Authorization Successful"
+
+**Note**: If you see "Needs Refresh", you don't need to reconnect - the MCP server will automatically refresh your token when you use Google Drive features.
 
 ### 2. Use Drive in Your Prompts
 
@@ -61,9 +67,16 @@ kubectl create secret generic google-workflow-app-secret \
 - Check that popup blockers aren't blocking the OAuth window
 
 **Claude says it can't access Drive**
-- Verify you see "Connected" status in MCP Integrations accordion
+- Verify you see "Connected" or "Needs Refresh" status in MCP Integrations accordion
+- If status is "Needs Refresh", the token will auto-refresh on first use - try your request again
+- If status is "Not Connected", click "Connect" to authorize
 - Try disconnecting and reconnecting
 - Check the session logs for errors
+
+**"Placeholder email" or "credentials use placeholder email" error**
+- Admin setup is incomplete - OAuth credentials in the Kubernetes Secret are using example values (user@example.com)
+- Contact your administrator to configure real Google OAuth credentials in the `google-workflow-app-secret` Secret
+- See "First-Time Setup (Admin)" section above for configuration steps
 
 **"Invalid scopes" error**
 - You may need to re-authorize with updated permissions
