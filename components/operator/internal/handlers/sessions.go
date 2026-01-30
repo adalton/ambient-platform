@@ -2580,7 +2580,7 @@ func syncGoogleCredentialsToSecret(ctx context.Context, sessionNamespace, secret
 	}
 
 	if creds.Email == "" {
-		return fmt.Errorf("credentials missing email field")
+		return fmt.Errorf("credentials missing email field for user %s", userID)
 	}
 
 	// Parse expiry time

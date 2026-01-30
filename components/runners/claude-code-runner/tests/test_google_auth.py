@@ -285,9 +285,12 @@ class TestUserEmailExtraction:
     """Test USER_GOOGLE_EMAIL environment variable setting."""
 
     @pytest.mark.asyncio
-    async def test_email_extracted_and_set(self, temp_workspace_creds):
+    async def test_email_extracted_and_set(self, temp_workspace_creds, monkeypatch):
         """Test email is extracted from credentials and set as env var."""
         from adapter import ClaudeCodeAdapter
+
+        # Ensure env var starts clean
+        monkeypatch.delenv("USER_GOOGLE_EMAIL", raising=False)
 
         # Create valid credentials
         creds = {
@@ -313,7 +316,7 @@ class TestUserEmailExtraction:
         assert os.getenv("USER_GOOGLE_EMAIL") == "test.user@gmail.com"
 
     @pytest.mark.asyncio
-    async def test_placeholder_email_skipped(self, temp_workspace_creds):
+    async def test_placeholder_email_skipped(self, temp_workspace_creds, monkeypatch):
         """Test that placeholder email is not set as env var."""
         from adapter import ClaudeCodeAdapter
 
@@ -326,9 +329,8 @@ class TestUserEmailExtraction:
         }
         temp_workspace_creds.write_text(json.dumps(creds))
 
-        # Clear env var if set
-        if "USER_GOOGLE_EMAIL" in os.environ:
-            del os.environ["USER_GOOGLE_EMAIL"]
+        # Clear env var using monkeypatch (auto-restored after test)
+        monkeypatch.delenv("USER_GOOGLE_EMAIL", raising=False)
 
         adapter = ClaudeCodeAdapter()
 
@@ -345,9 +347,12 @@ class TestUserEmailExtraction:
         assert os.getenv("USER_GOOGLE_EMAIL") != "user@example.com"
 
     @pytest.mark.asyncio
-    async def test_empty_dict_handled(self, temp_workspace_creds):
+    async def test_empty_dict_handled(self, temp_workspace_creds, monkeypatch):
         """Test that empty credentials dict is handled gracefully."""
         from adapter import ClaudeCodeAdapter
+
+        # Ensure env var starts clean
+        monkeypatch.delenv("USER_GOOGLE_EMAIL", raising=False)
 
         # Empty dict
         creds = {}
@@ -366,9 +371,12 @@ class TestUserEmailExtraction:
             await adapter._set_google_user_email()
 
     @pytest.mark.asyncio
-    async def test_non_dict_structure_handled(self, temp_workspace_creds):
+    async def test_non_dict_structure_handled(self, temp_workspace_creds, monkeypatch):
         """Test that non-dict JSON structure is handled gracefully."""
         from adapter import ClaudeCodeAdapter
+
+        # Ensure env var starts clean
+        monkeypatch.delenv("USER_GOOGLE_EMAIL", raising=False)
 
         # List instead of dict
         temp_workspace_creds.write_text(json.dumps(["not", "a", "dict"]))

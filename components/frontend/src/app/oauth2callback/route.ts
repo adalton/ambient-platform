@@ -33,7 +33,12 @@ export async function GET(request: Request) {
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
+      let errorText = 'OAuth callback failed'
+      try {
+        errorText = await response.text()
+      } catch {
+        // Use default error message if response body can't be read
+      }
       return new Response(
         `
         <!DOCTYPE html>
@@ -47,7 +52,7 @@ export async function GET(request: Request) {
           </head>
           <body>
             <h1 class="error">❌ Authentication Failed</h1>
-            <p>${escapeHtml(errorText) || 'OAuth callback failed'}</p>
+            <p>${escapeHtml(errorText)}</p>
             <p>You can close this window and try again.</p>
           </body>
         </html>

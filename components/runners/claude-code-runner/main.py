@@ -468,7 +468,7 @@ async def handle_feedback(event: FeedbackEvent):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _read_google_credentials(workspace_path: Path, secret_path: Path) -> dict | None:
+def _read_google_credentials(workspace_path: Path, secret_path: Path) -> Dict[str, Any] | None:
     """
     Read Google credentials from workspace or secret mount location.
 
@@ -523,7 +523,7 @@ def _parse_token_expiry(expiry_str: str) -> datetime | None:
         return None
 
 
-def _validate_google_token(user_creds: dict, user_email: str) -> tuple[bool | None, str]:
+def _validate_google_token(user_creds: Dict[str, Any], user_email: str) -> tuple[bool | None, str]:
     """
     Validate Google OAuth token structure and expiry.
 
