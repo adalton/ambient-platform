@@ -491,7 +491,7 @@ class ClaudeCodeAdapter:
                     thread_id=thread_id,
                     run_id=run_id,
                     message_id=warning_message_id,
-                    content=warning_msg
+                    delta=warning_msg
                 )
                 yield TextMessageEndEvent(
                     type=EventType.TEXT_MESSAGE_END,
@@ -554,10 +554,16 @@ class ClaudeCodeAdapter:
                 artifacts_path="artifacts",
                 ambient_config=ambient_config,
             )
-            system_prompt_config = [
-                "claude_code",
-                {"type": "text", "text": workspace_prompt}
-            ]
+            # SystemPromptPreset format: uses claude_code preset with appended workspace context
+            system_prompt_config = {
+                "type": "preset",
+                "preset": "claude_code",
+                "append": workspace_prompt,
+            }
+
+            # Capture stderr from the SDK to diagnose MCP server failures
+            def sdk_stderr_handler(line: str):
+                logger.warning(f"[SDK stderr] {line.rstrip()}")
 
             # Configure SDK options
             options = ClaudeAgentOptions(
@@ -568,6 +574,7 @@ class ClaudeCodeAdapter:
                 setting_sources=["project"],
                 system_prompt=system_prompt_config,
                 include_partial_messages=True,
+                stderr=sdk_stderr_handler,
             )
 
             if self._skip_resume_on_restart:
@@ -1503,6 +1510,24 @@ class ClaudeCodeAdapter:
             return []
         return []
 
+    def _expand_env_vars(self, value: Any) -> Any:
+        """Recursively expand ${VAR} and ${VAR:-default} patterns in config values."""
+        if isinstance(value, str):
+            # Pattern: ${VAR} or ${VAR:-default}
+            pattern = r'\$\{([^}:]+)(?::-([^}]*))?\}'
+
+            def replace_var(match):
+                var_name = match.group(1)
+                default_val = match.group(2) if match.group(2) is not None else ""
+                return os.environ.get(var_name, default_val)
+
+            return re.sub(pattern, replace_var, value)
+        elif isinstance(value, dict):
+            return {k: self._expand_env_vars(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [self._expand_env_vars(item) for item in value]
+        return value
+
     def _load_mcp_config(self, cwd_path: str) -> Optional[dict]:
         """Load MCP server configuration from the ambient runner's .mcp.json file."""
         try:
@@ -1516,7 +1541,11 @@ class ClaudeCodeAdapter:
                 logger.info(f"Loading MCP config from: {runner_mcp_file}")
                 with open(runner_mcp_file, "r") as f:
                     config = _json.load(f)
-                    return config.get("mcpServers", {})
+                    mcp_servers = config.get("mcpServers", {})
+                    # Expand environment variables in the config
+                    expanded = self._expand_env_vars(mcp_servers)
+                    logger.info(f"Expanded MCP config env vars for {len(expanded)} servers")
+                    return expanded
             else:
                 logger.info(f"No MCP config file found at: {runner_mcp_file}")
                 return None
@@ -1637,7 +1666,9 @@ class ClaudeCodeAdapter:
 
         if success:
             # Extract and set USER_GOOGLE_EMAIL from credentials
+            logging.info("DEBUG: About to call _set_google_user_email()")
             await self._set_google_user_email()
+            logging.info("DEBUG: Finished calling _set_google_user_email()")
 
     async def _try_copy_google_credentials(self) -> bool:
         """Attempt to copy Google credentials from mounted secret.
@@ -1737,40 +1768,13 @@ class ClaudeCodeAdapter:
         return False
 
     async def _set_google_user_email(self):
-        """Extract user email from credentials.json and set as environment variable.
+        """Ensure USER_GOOGLE_EMAIL is set for the MCP server.
 
-        This ensures USER_GOOGLE_EMAIL is set correctly instead of using the placeholder
-        'user@example.com' from .mcp.json defaults.
+        The operator now sets USER_GOOGLE_EMAIL directly from cluster credentials.
+        This function only logs the current value for debugging.
         """
-        import json as _json
-
-        workspace_path = Path("/workspace/.google_workspace_mcp/credentials/credentials.json")
-
-        if not workspace_path.exists():
-            logging.debug("No Google credentials to extract email from")
-            return
-
-        try:
-            with open(workspace_path, 'r') as f:
-                creds = _json.load(f)
-
-            # Validate credentials structure
-            if not isinstance(creds, dict) or not creds:
-                logging.warning("Google credentials file is empty or invalid format")
-                return
-
-            # Get first user email (single-user mode)
-            user_emails = list(creds.keys())
-            if user_emails:
-                user_email = user_emails[0]
-                # Skip placeholder email
-                if user_email != "user@example.com":
-                    os.environ["USER_GOOGLE_EMAIL"] = user_email
-                    logging.info(f"Set USER_GOOGLE_EMAIL={user_email}")
-                else:
-                    logging.debug("Skipping placeholder email user@example.com")
-            else:
-                logging.warning("No user email found in Google credentials")
-
-        except (_json.JSONDecodeError, OSError, KeyError) as e:
-            logging.error(f"Failed to extract user email from credentials: {e}")
+        current_email = os.environ.get("USER_GOOGLE_EMAIL", "")
+        if current_email and current_email != "user@example.com":
+            logging.info(f"USER_GOOGLE_EMAIL already set by operator: {current_email}")
+        else:
+            logging.warning("USER_GOOGLE_EMAIL not set or is placeholder - Google MCP may not work")

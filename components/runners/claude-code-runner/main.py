@@ -8,6 +8,8 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import uvicorn
@@ -503,16 +505,19 @@ def _parse_token_expiry(expiry_str: str) -> datetime | None:
     Parse token expiry timestamp string to datetime.
 
     Args:
-        expiry_str: ISO 8601 timestamp string (may include Z suffix)
+        expiry_str: ISO 8601 timestamp string (may include Z suffix or be timezone-naive)
 
     Returns:
-        Parsed datetime object or None if parsing fails
+        Parsed timezone-aware datetime object or None if parsing fails
     """
-    from datetime import datetime, timezone
-
     try:
-        # fromisoformat() handles Z-suffix natively in Python 3.11+
-        return datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
+        # Handle Z suffix
+        expiry_str = expiry_str.replace('Z', '+00:00')
+        dt = datetime.fromisoformat(expiry_str)
+        # If timezone-naive, assume UTC
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except (ValueError, TypeError) as e:
         logger.warning(f"Could not parse token expiry '{expiry_str}': {e}")
         return None
@@ -589,28 +594,28 @@ def _check_mcp_authentication(server_name: str) -> tuple[bool | None, str | None
             return False, "Google OAuth not configured - authenticate via Integrations page"
 
         try:
-            # workspace-mcp stores credentials in this format:
+            # workspace-mcp credentials format (flat structure):
             # {
-            #   "user@example.com": {
-            #     "access_token": "...",
-            #     "refresh_token": "...",
-            #     "token_expiry": "2026-01-23T12:00:00Z",
-            #     "email": "user@example.com"
-            #   }
+            #   "token": "access_token_value",
+            #   "refresh_token": "...",
+            #   "token_uri": "https://oauth2.googleapis.com/token",
+            #   "client_id": "...",
+            #   "client_secret": "...",
+            #   "scopes": [...],
+            #   "expiry": "2026-01-23T12:00:00"
             # }
 
-            # Extract user email (should be the only key in single-user mode)
-            user_emails = list(creds.keys())
-            if not user_emails:
-                return False, "Google OAuth credentials invalid - no user found"
+            # Get user email from environment (set by operator)
+            user_email = os.environ.get("USER_GOOGLE_EMAIL", "")
+            if not user_email or user_email == "user@example.com":
+                return False, "Google OAuth not configured - USER_GOOGLE_EMAIL not set"
 
-            user_email = user_emails[0]
-
-            # Skip placeholder email from .mcp.json default
-            if user_email == "user@example.com":
-                return False, "Google OAuth credentials use placeholder email - authenticate via Integrations page"
-
-            user_creds = creds[user_email]
+            # Map new flat format to expected field names
+            user_creds = {
+                "access_token": creds.get("token", ""),
+                "refresh_token": creds.get("refresh_token", ""),
+                "token_expiry": creds.get("expiry", ""),
+            }
 
             return _validate_google_token(user_creds, user_email)
 

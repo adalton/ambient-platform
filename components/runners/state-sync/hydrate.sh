@@ -64,12 +64,14 @@ mkdir -p /workspace/artifacts || error_exit "Failed to create artifacts director
 mkdir -p /workspace/file-uploads || error_exit "Failed to create file-uploads directory"
 mkdir -p /workspace/repos || error_exit "Failed to create repos directory"
 
-# Set permissions for .claude (best-effort; may be restricted by SCC)
-# If the SCC assigns an fsGroup, the directory should already be writable.
-chmod -R 777 "${CLAUDE_DATA_PATH}" 2>/dev/null || echo "Warning: failed to chmod ${CLAUDE_DATA_PATH} (continuing)"
-
-# Other directories - standard permissions
-chmod 755 /workspace/artifacts /workspace/file-uploads /workspace/repos 2>/dev/null || true
+# Set permissions for workspace directories
+# Try chown first (works on standard K8s), fall back to 777 if blocked by SELinux/SCC
+chown -R 1001:0 "${CLAUDE_DATA_PATH}" /workspace/artifacts /workspace/file-uploads /workspace/repos 2>/dev/null || true
+# .claude needs 777 for SDK internals
+chmod -R 777 "${CLAUDE_DATA_PATH}" 2>/dev/null || true
+# Other directories: use 777 to ensure runner (uid=1001) can write
+# (chown may fail on SELinux-enabled hosts or with restrictive SCCs)
+chmod -R 777 /workspace/artifacts /workspace/file-uploads /workspace/repos 2>/dev/null || true
 
 # Check if S3 is configured
 if [ -z "${S3_ENDPOINT}" ] || [ -z "${S3_BUCKET}" ] || [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
@@ -127,11 +129,14 @@ else
     echo "No existing state found, starting fresh session"
 fi
 
-# Set permissions on subdirectories after S3 download (EmptyDir root may not be chmodable)
-echo "Setting permissions on subdirectories..."
-# .claude needs to be writable by user 1001 (runner container) - use 777
+# Set ownership and permissions on subdirectories after S3 download
+echo "Setting ownership and permissions on subdirectories..."
+# Try chown first (works on standard K8s), fall back to 777 if blocked by SELinux/SCC
+chown -R 1001:0 "${CLAUDE_DATA_PATH}" /workspace/artifacts /workspace/file-uploads /workspace/repos 2>/dev/null || true
+# .claude needs 777 for SDK internals
 chmod -R 777 "${CLAUDE_DATA_PATH}" 2>/dev/null || true
-chmod -R 755 /workspace/artifacts /workspace/file-uploads /workspace/repos 2>/dev/null || true
+# Other directories: use 777 to ensure runner (uid=1001) can write
+chmod -R 777 /workspace/artifacts /workspace/file-uploads /workspace/repos 2>/dev/null || true
 
 # ========================================
 # Clone repositories and workflows

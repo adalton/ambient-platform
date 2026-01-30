@@ -46,12 +46,25 @@ Administrators need to configure Google OAuth credentials once:
 
 1. Create a Google Cloud project and OAuth 2.0 credentials
 2. Set authorized redirect URI to: `https://your-vteam-backend/oauth2callback`
-3. Create a Kubernetes Secret in the operator namespace:
+3. Create a Kubernetes Secret in the `ambient-code` namespace:
 
 ```bash
 kubectl create secret generic google-workflow-app-secret \
+  -n ambient-code \
   --from-literal=GOOGLE_OAUTH_CLIENT_ID='your-client-id' \
-  --from-literal=GOOGLE_OAUTH_CLIENT_SECRET='your-client-secret'
+  --from-literal=GOOGLE_OAUTH_CLIENT_SECRET='your-client-secret' \
+  --from-literal=OAUTH_STATE_SECRET="$(openssl rand -base64 32)"
+```
+
+**Required Fields:**
+- `GOOGLE_OAUTH_CLIENT_ID`: OAuth 2.0 client ID from Google Cloud Console
+- `GOOGLE_OAUTH_CLIENT_SECRET`: OAuth 2.0 client secret from Google Cloud Console
+- `OAUTH_STATE_SECRET`: Random secret for CSRF protection (generate with `openssl rand -base64 32`)
+
+4. Restart the backend to pick up the new credentials:
+
+```bash
+kubectl rollout restart deployment backend-api -n ambient-code
 ```
 
 ## Security & Privacy
