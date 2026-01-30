@@ -73,7 +73,7 @@ class TestGoogleAuthValidation:
             is_auth, msg = _check_mcp_authentication("google-workspace")
 
         assert is_auth is False
-        assert "empty" in msg.lower()
+        assert "not configured" in msg.lower()  # Empty file treated as not configured
 
     def test_valid_unexpired_tokens(self, temp_workspace_creds):
         """Test with valid, unexpired tokens."""

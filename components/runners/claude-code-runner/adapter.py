@@ -1666,9 +1666,7 @@ class ClaudeCodeAdapter:
 
         if success:
             # Extract and set USER_GOOGLE_EMAIL from credentials
-            logging.info("DEBUG: About to call _set_google_user_email()")
             await self._set_google_user_email()
-            logging.info("DEBUG: Finished calling _set_google_user_email()")
 
     async def _try_copy_google_credentials(self) -> bool:
         """Attempt to copy Google credentials from mounted secret.

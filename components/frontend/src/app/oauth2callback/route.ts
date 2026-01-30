@@ -8,6 +8,18 @@ import { BACKEND_URL } from '@/lib/config'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * Escape HTML special characters to prevent XSS attacks
+ */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const searchParams = url.searchParams
@@ -35,7 +47,7 @@ export async function GET(request: Request) {
           </head>
           <body>
             <h1 class="error">❌ Authentication Failed</h1>
-            <p>${errorText || 'OAuth callback failed'}</p>
+            <p>${escapeHtml(errorText) || 'OAuth callback failed'}</p>
             <p>You can close this window and try again.</p>
           </body>
         </html>
@@ -92,7 +104,7 @@ export async function GET(request: Request) {
         </head>
         <body>
           <h1 class="error">❌ Error</h1>
-          <p>${error instanceof Error ? error.message : 'Failed to process OAuth callback'}</p>
+          <p>${error instanceof Error ? escapeHtml(error.message) : 'Failed to process OAuth callback'}</p>
           <p>You can close this window and try again.</p>
         </body>
       </html>
